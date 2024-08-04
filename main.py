@@ -1,6 +1,148 @@
 import pygame
 import random
 import math
+import time
+import threading
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from brainflow.board_shim import BoardShim, BrainFlowInputParams, BoardIds
+from brainflow.data_filter import DataFilter, FilterTypes, DetrendOperations
+
+current_ratio = 0
+stop_flag = False
+
+class measure():
+    def __init__(self) -> None:
+        pass
+    
+    def calcurate():
+        global current_ratio, stop_flag
+        
+        # OpenBCI Ganglionボードの設定
+        params = BrainFlowInputParams()
+        params.serial_port = 'COM5'  # シリアルポートを指定
+
+        # ボードIDを指定してセッションを準備
+        board = BoardShim(BoardIds.GANGLION_BOARD, params)
+        board.prepare_session()
+
+        # サンプリングレートを取得
+        sampling_rate = BoardShim.get_sampling_rate(BoardIds.GANGLION_BOARD)   # sampling_late = 200
+
+        # EEGチャネルを取得
+        eeg_channels = BoardShim.get_eeg_channels(BoardIds.GANGLION_BOARD)
+
+        # リアルタイムプロットのセットアップ
+        fig, ax = plt.subplots(3, 1, sharex=True)
+        xdata, alpha_ydata, beta_ydata, ratio_ydata = [], [], [], []
+        alpha_ln, = ax[0].plot([], [], 'b-', animated=True, label='Alpha')
+        beta_ln, = ax[1].plot([], [], 'r-', animated=True, label='Beta')
+        ratio_ln, = ax[2].plot([], [], 'g-', animated=True, label='ratio')
+
+        window_size = 5  # 移動平均のウィンドウサイズ
+
+        # エネルギーとその比率を表示するテキスト要素
+        alpha_energy_text = ax[0].text(0.02, 0.95, '', transform=ax[0].transAxes)
+        beta_energy_text = ax[1].text(0.02, 0.95, '', transform=ax[1].transAxes)
+        ratio_text = ax[2].text(0.02, 0.95, '', transform=ax[2].transAxes)
+
+        def moving_average(data, window_size):
+            return np.convolve(data, np.ones(window_size) / window_size, mode='valid')
+
+        def hard_threshold(data, threshold):
+            return np.where(np.abs(data) > threshold, 0, data)
+
+        def calculate_energy(data):
+            return np.mean(data ** 2)
+
+        def init():
+            for a in ax:
+                a.set_xlim(0, 50)  # 50秒間のデータを表示
+                if a==ax[0] or a==ax[1]:
+                    a.set_ylim(-100, 100)  # α波とβ波の値の範囲を設定
+                else:
+                    a.set_ylim(0, 5)  # 比率の値の範囲を設定
+                a.legend(loc='upper right')  
+            return alpha_ln, beta_ln, alpha_energy_text, beta_energy_text, ratio_text
+
+        def update(frame):
+            global current_ratio
+            data = board.get_current_board_data(sampling_rate)  # 最新のデータを取得
+            alpha_data, beta_data = [], []
+            
+            for channel in eeg_channels[:3]:  # 3チャネルのみを使用
+                DataFilter.detrend(data[channel], DetrendOperations.LINEAR.value)
+                
+                # アルファ波の抽出
+                alpha_channel_data = data[channel].copy()
+                DataFilter.perform_bandpass(alpha_channel_data, sampling_rate, 8.0, 13.0, 2, FilterTypes.BUTTERWORTH_ZERO_PHASE.value, 0)
+                alpha_channel_data = hard_threshold(alpha_channel_data, 150)
+                alpha_data.append(alpha_channel_data)
+                
+                # ベータ波の抽出
+                beta_channel_data = data[channel].copy()
+                DataFilter.perform_bandpass(beta_channel_data, sampling_rate, 13.0, 30.0, 2, FilterTypes.BUTTERWORTH_ZERO_PHASE.value, 0)
+                beta_channel_data = hard_threshold(beta_channel_data, 150)
+                beta_data.append(beta_channel_data)
+                
+            alpha_mean = np.mean(alpha_data, axis=0)
+            beta_mean = np.mean(beta_data, axis=0)
+            
+            # エネルギーの計算
+            alpha_energy = calculate_energy(alpha_mean)
+            beta_energy = calculate_energy(beta_mean)
+            ratio = beta_energy / alpha_energy if alpha_energy != 0 else 0
+            current_ratio =  ratio
+            
+            # テキスト要素の更新
+            alpha_energy_text.set_text(f'Alpha Energy: {alpha_energy:.2f} µV²')
+            beta_energy_text.set_text(f'Beta Energy: {beta_energy:.2f} µV²')
+            ratio_text.set_text(f'Beta/Alpha Ratio: {ratio:.2f}')
+            
+            current_time = time.time() % 50  # 時間を100秒間隔でループ
+            
+            xdata.append(current_time)
+            alpha_ydata.append(alpha_mean[0])
+            beta_ydata.append(beta_mean[0])
+            ratio_ydata.append(ratio)
+            
+            if len(xdata) > 1 and xdata[-1] < xdata[-2]:  # 100秒を超えた場合
+                xdata.clear()
+                alpha_ydata.clear()
+                beta_ydata.clear()
+                ratio_ydata.clear()
+                xdata.append(current_time)
+                alpha_ydata.append(alpha_mean[0])
+                beta_ydata.append(beta_mean[0])
+                ratio_ydata.append(ratio)
+                
+            if len(alpha_ydata) > window_size:
+                smoothed_alpha_ydata = moving_average(alpha_ydata, window_size)
+                smoothed_beta_ydata = moving_average(beta_ydata, window_size)
+                smoothed_ratio_ydata = moving_average(ratio_ydata, window_size)
+                
+                alpha_ln.set_data(xdata[-len(smoothed_alpha_ydata):], smoothed_alpha_ydata)
+                beta_ln.set_data(xdata[-len(smoothed_beta_ydata):], smoothed_beta_ydata)
+                ratio_ln.set_data(xdata[-len(smoothed_ratio_ydata):], smoothed_ratio_ydata)
+            else:
+                alpha_ln.set_data(xdata, alpha_ydata)
+                beta_ln.set_data(xdata, beta_ydata)
+                ratio_ln.set_data(xdata, ratio_ydata)
+                
+            return alpha_ln, beta_ln, ratio_ln, alpha_energy_text, beta_energy_text, ratio_text
+        # リアルタイムプロットのアニメーション
+        ani = FuncAnimation(fig, update, init_func=init, blit=True, interval=30)  # 30ミリ秒ごとに更新
+
+        # ボードからストリーミングを開始
+        board.start_stream()
+
+        # プロットを表示
+        plt.show()
+
+        # ストリーミングを停止してセッションを終了
+        board.stop_stream()
+        board.release_session()
 
 # 初期設定
 pygame.init()
@@ -63,7 +205,7 @@ score_ranges = {
 initial_aim_radius = 250
 aim_radius = initial_aim_radius
 aim_shrink_rate = 0.5
-min_aim_radius = 20
+min_aim_radius = 20                   # 要変更
 score = 0
 hit_pos = None
 game_over = False
@@ -74,7 +216,7 @@ FADE_OUT_DURATION = 500  # フェードアウトの時間（ミリ秒）
 SPEED_IMAGE_DURATION = 100  # 各速度画像の表示時間（ミリ秒）
 
 # 照準の揺れに関する変数
-sway_radius = 30
+sway_radius = 30                        # 要変更
 aim_center_x, aim_center_y = target_rect.center
 aim_target_x, aim_target_y = target_rect.center
 sway_speed = 2
@@ -94,8 +236,9 @@ def get_random_point_in_circle(center, radius):
     return (int(x), int(y))
 
 def update_aim_position():
-    global aim_center_x, aim_center_y, aim_target_x, aim_target_y
+    global aim_center_x, aim_center_y, aim_target_x, aim_target_y, current_ratio
     
+    sway_radius = 30 + 20*current_ratio
     if math.hypot(aim_center_x - aim_target_x, aim_center_y - aim_target_y) < 1:
         aim_target_x, aim_target_y = get_random_point_in_circle(target_rect.center, sway_radius)
     
@@ -142,6 +285,9 @@ def draw_arrow_animation(progress):
 
 clock = pygame.time.Clock()
 
+graph = measure
+ratio_thread  =threading.Thread(target=graph.calcurate)
+ratio_thread.start()
 while True:
     current_time = pygame.time.get_ticks()
     
@@ -155,22 +301,6 @@ while True:
                 score = calculate_score(hit_pos)
                 animation_running = True
                 animation_start_time = current_time
-            # 矢のパラメータを調整するキー
-            elif event.key == pygame.K_w:
-                ARROW_HEIGHT_RATIO = min(1.0, ARROW_HEIGHT_RATIO + 0.01)
-            elif event.key == pygame.K_s:
-                ARROW_HEIGHT_RATIO = max(0.1, ARROW_HEIGHT_RATIO - 0.01)
-            elif event.key == pygame.K_a:
-                ARROW_WIDTH_RATIO = max(0.1, ARROW_WIDTH_RATIO - 0.01)
-            elif event.key == pygame.K_d:
-                ARROW_WIDTH_RATIO = min(1.0, ARROW_WIDTH_RATIO + 0.01)
-            elif event.key == pygame.K_q:
-                ARROW_ANGLE = (ARROW_ANGLE + 15) % 360
-            elif event.key == pygame.K_e:
-                ARROW_ANGLE = (ARROW_ANGLE - 15) % 360
-            
-            # 矢の調整を適用
-            adjust_arrow(ARROW_WIDTH_RATIO, ARROW_HEIGHT_RATIO, ARROW_ANGLE)
 
     screen.fill(WHITE)
 
@@ -189,6 +319,7 @@ while True:
         if aim_radius > 0 and not game_over:
             update_aim_position()
             pygame.draw.circle(screen, BLACK, (int(aim_center_x), int(aim_center_y)), int(aim_radius), 2)
+            print(current_ratio)
 
         # 当たった点の描画
         if hit_pos and game_over:
@@ -197,10 +328,17 @@ while True:
         # スコアの表示
         score_text = font.render(f'Score: {score}', True, BLACK)
         screen.blit(score_text, (10, 10))
+        
+        min_aim_radius = 20 + 10 * current_ratio
 
         # 照準の縮小（最小サイズの制限付き）
         if aim_radius > min_aim_radius and not game_over:
             aim_radius = max(aim_radius - aim_shrink_rate, min_aim_radius)
-
+        
+        # 標準の拡大
+        if aim_radius < min_aim_radius and not game_over:
+            aim_radius = max(aim_radius , min_aim_radius + aim_shrink_rate)
     pygame.display.flip()
     clock.tick(60)  # 60FPSに制限
+
+ratio_thread.join()
