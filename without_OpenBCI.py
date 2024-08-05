@@ -4,9 +4,14 @@ import math
 
 # 初期設定
 pygame.init()
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 1000, 750
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("弓矢の的あてゲーム")
+# フルスクリーン
+# info = pygame.display.Info()
+# WIDTH, HEIGHT = info.current_w, info.current_h
+# screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+# pygame.display.set_caption("弓矢の的あてゲーム")
 
 # 色設定
 WHITE = (255, 255, 255)
@@ -16,8 +21,11 @@ RED = (255, 0, 0)
 
 # フォント設定
 font = pygame.font.SysFont(None, 36)
+title_font = pygame.font.SysFont(None, 72)
 
 # 画像読み込み
+title_image = pygame.image.load("title.png")
+title_image = pygame.transform.scale(title_image, (WIDTH, HEIGHT))
 background_image = pygame.image.load("background.png")
 background_image = pygame.transform.scale(background_image, (WIDTH, HEIGHT))
 canvas_image = pygame.image.load("canvas.png")
@@ -97,6 +105,11 @@ aim_center_x, aim_center_y = target_rect.center
 aim_target_x, aim_target_y = target_rect.center
 sway_speed = 2
 
+# ゲーム状態
+START_SCREEN = 0
+PLAYING = 1
+game_state = START_SCREEN
+
 def calculate_score(hit_pos):
     distance = math.hypot(hit_pos[0] - target_rect.centerx, hit_pos[1] - target_rect.centery)
     for points, radius in score_ranges.items():
@@ -161,6 +174,9 @@ def draw_arrow_animation(progress):
     white_overlay.set_alpha(255 - alpha)
     screen.blit(white_overlay, (0, 0))
 
+def draw_start_screen():
+    screen.blit(title_image, (0, 0))
+
 clock = pygame.time.Clock()
 
 while True:
@@ -171,43 +187,56 @@ while True:
             pygame.quit()
             exit()
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE and not game_over and not animation_running:
-                hit_pos = get_random_point_in_circle((aim_center_x, aim_center_y), aim_radius)
-                score = calculate_score(hit_pos)
-                animation_running = True
-                animation_start_time = current_time
+            if event.key == pygame.K_SPACE:
+                if game_state == START_SCREEN:
+                    game_state = PLAYING
+                    aim_radius = initial_aim_radius
+                    score = 0
+                    game_over = False
+                elif game_state == PLAYING and not game_over and not animation_running:
+                    hit_pos = get_random_point_in_circle((aim_center_x, aim_center_y), aim_radius)
+                    score = calculate_score(hit_pos)
+                    animation_running = True
+                    animation_start_time = current_time
 
-    screen.fill(WHITE)
-    screen.blit(background_image, (0, 0))
-    screen.blit(canvas_image, canvas_rect.topleft)
+    if game_state == START_SCREEN:
+        draw_start_screen()
+    elif game_state == PLAYING:
+        screen.fill(WHITE)
+        screen.blit(background_image, (0, 0))
+        screen.blit(canvas_image, canvas_rect.topleft)
 
-    if animation_running:
-        animation_progress = (current_time - animation_start_time) / ANIMATION_DURATION
-        if animation_progress >= 1:
-            animation_running = False
-            game_over = True
+        if animation_running:
+            animation_progress = (current_time - animation_start_time) / ANIMATION_DURATION
+            if animation_progress >= 1:
+                animation_running = False
+                game_over = True
+            else:
+                draw_arrow_animation(animation_progress)
         else:
-            draw_arrow_animation(animation_progress)
-    else:
-        # 的の描画
-        screen.blit(target_image, target_rect)
+            # 的の描画
+            screen.blit(target_image, target_rect)
 
-        # 照準の位置更新と描画
-        if aim_radius > 0 and not game_over:
-            update_aim_position()
-            pygame.draw.circle(screen, BLACK, (int(aim_center_x), int(aim_center_y)), int(aim_radius), 2)
+            # 照準の位置更新と描画
+            if aim_radius > 0 and not game_over:
+                update_aim_position()
+                pygame.draw.circle(screen, BLACK, (int(aim_center_x), int(aim_center_y)), int(aim_radius), 2)
 
-        # 当たった点の描画
-        if hit_pos and game_over:
-            pygame.draw.circle(screen, BLUE, hit_pos, 5)
+            # 当たった点の描画
+            if hit_pos and game_over:
+                pygame.draw.circle(screen, BLUE, hit_pos, 5)
 
-        # スコアの表示
-        score_text = font.render(f'Score: {score}', True, BLACK)
-        screen.blit(score_text, (10, 10))
+            # スコアの表示
+            score_text = font.render(f'Score: {score}', True, BLACK)
+            screen.blit(score_text, (10, 10))
 
-        # 照準の縮小（最小サイズの制限付き）
-        if aim_radius > min_aim_radius and not game_over:
-            aim_radius = max(aim_radius - aim_shrink_rate, min_aim_radius)
+            # 照準の縮小（最小サイズの制限付き）
+            if aim_radius > min_aim_radius and not game_over:
+                aim_radius = max(aim_radius - aim_shrink_rate, min_aim_radius)
+
+            # if game_over:
+            #     restart_text = font.render("スペースキーを押して再スタート", True, BLACK)
+            #     screen.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, HEIGHT * 3 // 4))
 
     pygame.display.flip()
     clock.tick(60)  # 60FPSに制限
