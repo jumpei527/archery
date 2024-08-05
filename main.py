@@ -152,7 +152,8 @@ time.sleep(5)
 
 # 初期設定
 pygame.init()
-WIDTH, HEIGHT = 800, 600
+
+# WIDTH, HEIGHT = 800, 600
 # screen = pygame.display.set_mode((WIDTH, HEIGHT))
 # pygame.display.set_caption("弓矢の的あてゲーム")
 # フルスクリーン
@@ -169,6 +170,7 @@ RED = (255, 0, 0)
 
 # フォント設定
 font = pygame.font.Font("azukiLB.ttf", 50)
+large_font = pygame.font.Font("azukiLB.ttf", 90)
 
 # 画像読み込み
 title_image = pygame.image.load("title.png")
@@ -178,8 +180,8 @@ background_image = pygame.transform.scale(background_image, (WIDTH, HEIGHT))
 canvas_image = pygame.image.load("canvas.png")
 
 # canvas_imageのサイズ設定（画面幅と高さの比率で設定）
-CANVAS_WIDTH_RATIO = 0.25
-CANVAS_HEIGHT_RATIO = 0.2
+CANVAS_WIDTH_RATIO = 0.6
+CANVAS_HEIGHT_RATIO = 0.4
 CANVAS_WIDTH = int(WIDTH * CANVAS_WIDTH_RATIO)
 CANVAS_HEIGHT = int(HEIGHT * CANVAS_HEIGHT_RATIO)
 canvas_image = pygame.transform.scale(canvas_image, (CANVAS_WIDTH, CANVAS_HEIGHT))
@@ -187,10 +189,17 @@ result_image = pygame.image.load("result.png")
 result_image = pygame.transform.scale(result_image, (WIDTH, HEIGHT))
 
 # canvas_imageの位置設定（画面中央）
-canvas_rect = canvas_image.get_rect(center=(WIDTH // 2, 3 * HEIGHT // 5))
+canvas_rect = canvas_image.get_rect(center=(WIDTH // 2, HEIGHT))
 
+
+# 的の設定
+TARGET_WIDTH_RATIO = 0.5
+
+# 的のサイズを画面の比率に基づいて設定
+target_width = int(WIDTH * TARGET_WIDTH_RATIO)
 target_image = pygame.image.load("target.png")
-target_image = pygame.transform.scale(target_image, (250, 250))
+target_image = pygame.transform.scale(target_image, (target_width, target_width))
+
 speed_images = [
     pygame.image.load("speed_1.png"),
     pygame.image.load("speed_2.png"),
@@ -235,21 +244,21 @@ score_ranges = {
 }
 
 # ゲーム状態
-initial_aim_radius = 250
+initial_aim_radius = 600
 aim_radius = initial_aim_radius
-aim_shrink_rate = 0.5
-min_aim_radius = 50
+aim_shrink_rate = 1
+initial_min = 100
 score = 0
 hit_pos = None
 game_over = False
 animation_running = False
 animation_start_time = 0
-ANIMATION_DURATION = 3000  # 3秒間
+ANIMATION_DURATION = 1000  # 3秒間
 FADE_OUT_DURATION = 500  # フェードアウトの時間（ミリ秒）
 SPEED_IMAGE_DURATION = 100  # 各速度画像の表示時間（ミリ秒）
 
 # 照準の揺れに関する変数
-sway_radius = 30
+initial_sway_radius = 50
 aim_center_x, aim_center_y = target_rect.center
 aim_target_x, aim_target_y = target_rect.center
 sway_speed = 2
@@ -280,10 +289,10 @@ def get_random_point_in_circle(center, radius):
     y = center[1] + r * math.sin(angle)
     return (int(x), int(y))
 
-def update_aim_position():
+def update_aim_position(initial_sway_radius):
     global aim_center_x, aim_center_y, aim_target_x, aim_target_y, current_ratio
     
-    sway_radius = 30 + 20*current_ratio
+    sway_radius = initial_sway_radius + 20*current_ratio
     if math.hypot(aim_center_x - aim_target_x, aim_center_y - aim_target_y) < 1:
         aim_target_x, aim_target_y = get_random_point_in_circle(target_rect.center, sway_radius)
     
@@ -351,19 +360,16 @@ def reset_game():
 
 def draw_final_result_screen():
     screen.blit(result_image, (0, 0))
-    total_score_text = font.render(f'合計得点: {total_score}点', True, BLACK)
-    screen.blit(total_score_text, (WIDTH // 2 - total_score_text.get_width() // 2, HEIGHT // 2 - 50))
+    total_score_text = large_font.render(f'合計得点: {total_score}点', True, BLACK)
+    screen.blit(total_score_text, (WIDTH // 2 - total_score_text.get_width() // 2, HEIGHT // 2 - 230))
     for i, score in enumerate(scores):
-        score_text = font.render(f'{i+1}回目: {score}点', True, BLACK)
-        screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 2 + i*50))
+        score_text = large_font.render(f'{i+1}回目: {score}点', True, BLACK)
+        screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 2 - 120 + i*90))
     instruction_text = font.render('スペースキーを押して終了', True, BLACK)
-    screen.blit(instruction_text, (WIDTH // 2 - instruction_text.get_width() // 2, HEIGHT - 50))
+    screen.blit(instruction_text, (WIDTH // 2 - instruction_text.get_width() // 2, HEIGHT - 100))
 
 clock = pygame.time.Clock()
 
-# graph = measure
-# ratio_thread  =threading.Thread(target=graph.calcurate)
-# ratio_thread.start()
 while True:
     current_time = pygame.time.get_ticks()
     
@@ -416,7 +422,7 @@ while True:
 
             # 照準の位置更新と描画
             if aim_radius > 0 and not game_over:
-                update_aim_position()
+                update_aim_position(initial_sway_radius)
                 pygame.draw.circle(screen, BLACK, (int(aim_center_x), int(aim_center_y)), int(aim_radius), 2)
                 # print(current_ratio)
 
@@ -434,7 +440,7 @@ while True:
                 score_text_rect = score_text.get_rect(center=(WIDTH // 2, 30))  # 画面の中央上側に位置
                 screen.blit(score_text, score_text_rect)
 
-            min_aim_radius = 20 + 15 * current_ratio
+            min_aim_radius = initial_min + 15 * current_ratio
 
             # 照準の縮小（最小サイズの制限付き）
             if aim_radius > min_aim_radius and not game_over:
