@@ -146,9 +146,14 @@ class measure():
 
 # 初期設定
 pygame.init()
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 1000, 750
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("弓矢の的あてゲーム")
+# フルスクリーン
+# info = pygame.display.Info()
+# WIDTH, HEIGHT = info.current_w, info.current_h
+# screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+# pygame.display.set_caption("弓矢の的あてゲーム")
 
 # 色設定
 WHITE = (255, 255, 255)
@@ -158,8 +163,25 @@ RED = (255, 0, 0)
 
 # フォント設定
 font = pygame.font.SysFont(None, 36)
+title_font = pygame.font.SysFont(None, 72)
 
 # 画像読み込み
+title_image = pygame.image.load("title.png")
+title_image = pygame.transform.scale(title_image, (WIDTH, HEIGHT))
+background_image = pygame.image.load("background.png")
+background_image = pygame.transform.scale(background_image, (WIDTH, HEIGHT))
+canvas_image = pygame.image.load("canvas.png")
+
+# canvas_imageのサイズ設定（画面幅と高さの比率で設定）
+CANVAS_WIDTH_RATIO = 0.25
+CANVAS_HEIGHT_RATIO = 0.2
+CANVAS_WIDTH = int(WIDTH * CANVAS_WIDTH_RATIO)
+CANVAS_HEIGHT = int(HEIGHT * CANVAS_HEIGHT_RATIO)
+canvas_image = pygame.transform.scale(canvas_image, (CANVAS_WIDTH, CANVAS_HEIGHT))
+
+# canvas_imageの位置設定（画面中央）
+canvas_rect = canvas_image.get_rect(center=(WIDTH // 2, 3 * HEIGHT // 4))
+
 target_image = pygame.image.load("target.png")
 target_image = pygame.transform.scale(target_image, (250, 250))
 speed_images = [
@@ -168,21 +190,25 @@ speed_images = [
     pygame.image.load("speed_3.png")
 ]
 speed_images = [pygame.transform.scale(img, (WIDTH, HEIGHT)) for img in speed_images]
-arrow_image = pygame.image.load("arrow.png")
+arrow_image_1 = pygame.image.load("arrow_1.png")
+arrow_image_2 = pygame.image.load("arrow_2.png")
 
 # 矢のパラメータ（画面サイズに対する比率で指定）
-ARROW_WIDTH_RATIO = 0.375  # 画面幅の37.5%
-ARROW_HEIGHT_RATIO = 0.333  # 画面高さの33.3%
+ARROW_WIDTH_RATIO = 0.5
+ARROW_HEIGHT_RATIO = 0.5
 ARROW_ANGLE = 45  # 矢の回転角度（度数法）
 
 # 矢の画像を調整する関数
 def adjust_arrow(width_ratio, height_ratio, angle):
-    global arrow_image, ARROW_WIDTH, ARROW_HEIGHT
+    global arrow_image_1, arrow_image_2, ARROW_WIDTH, ARROW_HEIGHT
     ARROW_WIDTH = int(WIDTH * width_ratio)
     ARROW_HEIGHT = int(HEIGHT * height_ratio)
-    arrow_image = pygame.image.load("arrow.png")
-    arrow_image = pygame.transform.scale(arrow_image, (ARROW_WIDTH, ARROW_HEIGHT))
-    arrow_image = pygame.transform.rotate(arrow_image, angle)
+    arrow_image_1 = pygame.image.load("arrow_1.png")
+    arrow_image_1 = pygame.transform.scale(arrow_image_1, (ARROW_WIDTH, ARROW_HEIGHT))
+    arrow_image_1 = pygame.transform.rotate(arrow_image_1, angle)
+    arrow_image_2 = pygame.image.load("arrow_2.png")
+    arrow_image_2 = pygame.transform.scale(arrow_image_2, (ARROW_WIDTH, ARROW_HEIGHT))
+    arrow_image_2 = pygame.transform.rotate(arrow_image_2, 48)
 
 # 初期の矢の調整
 adjust_arrow(ARROW_WIDTH_RATIO, ARROW_HEIGHT_RATIO, ARROW_ANGLE)
@@ -205,7 +231,7 @@ score_ranges = {
 initial_aim_radius = 250
 aim_radius = initial_aim_radius
 aim_shrink_rate = 0.5
-min_aim_radius = 20                   # 要変更
+min_aim_radius = 50
 score = 0
 hit_pos = None
 game_over = False
@@ -216,10 +242,15 @@ FADE_OUT_DURATION = 500  # フェードアウトの時間（ミリ秒）
 SPEED_IMAGE_DURATION = 100  # 各速度画像の表示時間（ミリ秒）
 
 # 照準の揺れに関する変数
-sway_radius = 30                        # 要変更
+sway_radius = 30
 aim_center_x, aim_center_y = target_rect.center
 aim_target_x, aim_target_y = target_rect.center
 sway_speed = 2
+
+# ゲーム状態
+START_SCREEN = 0
+PLAYING = 1
+game_state = START_SCREEN
 
 def calculate_score(hit_pos):
     distance = math.hypot(hit_pos[0] - target_rect.centerx, hit_pos[1] - target_rect.centery)
@@ -269,7 +300,10 @@ def draw_arrow_animation(progress):
     screen.blit(speed_image_copy, (0, 0))
     
     # 矢のアルファ値を変更
-    arrow_copy = arrow_image.copy()
+    if progress < 0.5:
+        arrow_copy = arrow_image_1.copy()
+    else:
+        arrow_copy = arrow_image_2.copy()
     arrow_copy.set_alpha(alpha)
     
     # 矢を中央に配置
@@ -283,11 +317,15 @@ def draw_arrow_animation(progress):
     white_overlay.set_alpha(255 - alpha)
     screen.blit(white_overlay, (0, 0))
 
+def draw_start_screen():
+    screen.blit(title_image, (0, 0))
+
 clock = pygame.time.Clock()
 
 graph = measure
 ratio_thread  =threading.Thread(target=graph.calcurate)
 ratio_thread.start()
+
 while True:
     current_time = pygame.time.get_ticks()
     
@@ -296,48 +334,61 @@ while True:
             pygame.quit()
             exit()
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE and not game_over and not animation_running:
-                hit_pos = get_random_point_in_circle((aim_center_x, aim_center_y), aim_radius)
-                score = calculate_score(hit_pos)
-                animation_running = True
-                animation_start_time = current_time
+            if event.key == pygame.K_SPACE:
+                if game_state == START_SCREEN:
+                    game_state = PLAYING
+                    aim_radius = initial_aim_radius
+                    score = 0
+                    game_over = False
+                elif game_state == PLAYING and not game_over and not animation_running:
+                    hit_pos = get_random_point_in_circle((aim_center_x, aim_center_y), aim_radius)
+                    score = calculate_score(hit_pos)
+                    animation_running = True
+                    animation_start_time = current_time
 
     screen.fill(WHITE)
 
-    if animation_running:
-        animation_progress = (current_time - animation_start_time) / ANIMATION_DURATION
-        if animation_progress >= 1:
-            animation_running = False
-            game_over = True
+    if game_state == START_SCREEN:
+        draw_start_screen()
+    elif game_state == PLAYING:
+        screen.fill(WHITE)
+        screen.blit(background_image, (0, 0))
+        screen.blit(canvas_image, canvas_rect.topleft)
+
+        if animation_running:
+            animation_progress = (current_time - animation_start_time) / ANIMATION_DURATION
+            if animation_progress >= 1:
+                animation_running = False
+                game_over = True
+            else:
+                draw_arrow_animation(animation_progress)
         else:
-            draw_arrow_animation(animation_progress)
-    else:
-        # 的の描画
-        screen.blit(target_image, target_rect)
+            # 的の描画
+            screen.blit(target_image, target_rect)
 
-        # 照準の位置更新と描画
-        if aim_radius > 0 and not game_over:
-            update_aim_position()
-            pygame.draw.circle(screen, BLACK, (int(aim_center_x), int(aim_center_y)), int(aim_radius), 2)
-            print(current_ratio)
+            # 照準の位置更新と描画
+            if aim_radius > 0 and not game_over:
+                update_aim_position()
+                pygame.draw.circle(screen, BLACK, (int(aim_center_x), int(aim_center_y)), int(aim_radius), 2)
+                print(current_ratio)
 
-        # 当たった点の描画
-        if hit_pos and game_over:
-            pygame.draw.circle(screen, BLUE, hit_pos, 5)
+            # 当たった点の描画
+            if hit_pos and game_over:
+                pygame.draw.circle(screen, BLUE, hit_pos, 5)
 
-        # スコアの表示
-        score_text = font.render(f'Score: {score}', True, BLACK)
-        screen.blit(score_text, (10, 10))
-        
-        min_aim_radius = 20 + 10 * current_ratio
+            # スコアの表示
+            score_text = font.render(f'Score: {score}', True, BLACK)
+            screen.blit(score_text, (10, 10))
+            
+            min_aim_radius = 20 + 10 * current_ratio
 
-        # 照準の縮小（最小サイズの制限付き）
-        if aim_radius > min_aim_radius and not game_over:
-            aim_radius = max(aim_radius - aim_shrink_rate, min_aim_radius)
-        
-        # 標準の拡大
-        if aim_radius < min_aim_radius and not game_over:
-            aim_radius = max(aim_radius , min_aim_radius + aim_shrink_rate)
+            # 照準の縮小（最小サイズの制限付き）
+            if aim_radius > min_aim_radius and not game_over:
+                aim_radius = max(aim_radius - aim_shrink_rate, min_aim_radius)
+            
+            # 標準の拡大
+            if aim_radius < min_aim_radius and not game_over:
+                aim_radius = max(aim_radius , min_aim_radius + aim_shrink_rate)
     pygame.display.flip()
     clock.tick(60)  # 60FPSに制限
 
