@@ -248,11 +248,17 @@ aim_center_x, aim_center_y = target_rect.center
 aim_target_x, aim_target_y = target_rect.center
 sway_speed = 2
 
-# ゲーム状態
+# ゲーム状態の定数を追加
 START_SCREEN = 0
 PLAYING = 1
 RESULT_SCREEN = 2
+FINAL_RESULT_SCREEN = 3
+
+# グローバル変数を追加
 game_state = START_SCREEN
+game_count = 0
+total_score = 0
+scores = []
 
 def calculate_score(hit_pos):
     distance = math.hypot(hit_pos[0] - target_rect.centerx, hit_pos[1] - target_rect.centery)
@@ -329,6 +335,24 @@ def draw_result_screen():
     instruction_text = font.render('スペースキーを押して再開', True, BLACK)
     screen.blit(instruction_text, (WIDTH // 2 - instruction_text.get_width() // 2, HEIGHT // 2 + 50))
 
+# メインループ内で使用する関数を追加
+def reset_game():
+    global aim_radius, score, game_over, animation_running
+    aim_radius = initial_aim_radius
+    score = 0
+    game_over = False
+    animation_running = False
+
+def draw_final_result_screen():
+    screen.blit(result_image, (0, 0))
+    total_score_text = font.render(f'合計得点: {total_score}点', True, BLACK)
+    screen.blit(total_score_text, (WIDTH // 2 - total_score_text.get_width() // 2, HEIGHT // 2 - 50))
+    for i, score in enumerate(scores):
+        score_text = font.render(f'{i+1}回目: {score}点', True, BLACK)
+        screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 2 + i*50))
+    instruction_text = font.render('スペースキーを押して終了', True, BLACK)
+    screen.blit(instruction_text, (WIDTH // 2 - instruction_text.get_width() // 2, HEIGHT - 50))
+
 clock = pygame.time.Clock()
 
 graph = measure
@@ -346,21 +370,24 @@ while True:
             if event.key == pygame.K_SPACE:
                 if game_state == START_SCREEN:
                     game_state = PLAYING
-                    aim_radius = initial_aim_radius
-                    score = 0
-                    game_over = False
+                    reset_game()
                 elif game_state == PLAYING and not game_over and not animation_running:
                     hit_pos = get_random_point_in_circle((aim_center_x, aim_center_y), aim_radius)
                     score = calculate_score(hit_pos)
                     animation_running = True
                     animation_start_time = current_time
                 elif game_state == PLAYING and game_over:
-                    game_state = RESULT_SCREEN
-                elif game_state == RESULT_SCREEN:
-                    game_state = PLAYING
-                    aim_radius = initial_aim_radius
-                    score = 0
-                    game_over = False
+                    game_count += 1
+                    scores.append(score)
+                    total_score += score
+                    if game_count < 3:
+                        game_state = PLAYING
+                        reset_game()
+                    else:
+                        game_state = FINAL_RESULT_SCREEN
+                elif game_state == FINAL_RESULT_SCREEN:
+                    pygame.quit()
+                    exit()
 
     screen.fill(WHITE)
 
@@ -415,9 +442,8 @@ while True:
             if game_over:
                 instruction_text = font.render('スペースキーを押して再開', True, BLACK)
                 screen.blit(instruction_text, (WIDTH // 2 - instruction_text.get_width() // 2, HEIGHT - 50))
-    elif game_state == RESULT_SCREEN:
-        draw_result_screen()
-
+    elif game_state == FINAL_RESULT_SCREEN:
+        draw_final_result_screen()
     pygame.display.flip()
     clock.tick(60)  # 60FPSに制限
 
