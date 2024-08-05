@@ -144,16 +144,22 @@ class measure():
         board.stop_stream()
         board.release_session()
 
+graph = measure
+ratio_thread  =threading.Thread(target=graph.calcurate)
+ratio_thread.start()
+
+time.sleep(5)
+
 # 初期設定
 pygame.init()
 WIDTH, HEIGHT = 800, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("弓矢の的あてゲーム")
-# フルスクリーン
-# info = pygame.display.Info()
-# WIDTH, HEIGHT = info.current_w, info.current_h
-# screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+# screen = pygame.display.set_mode((WIDTH, HEIGHT))
 # pygame.display.set_caption("弓矢の的あてゲーム")
+# フルスクリーン
+pygame.display.set_caption("弓矢の的あてゲーム")
+info = pygame.display.Info()
+WIDTH, HEIGHT = info.current_w, info.current_h
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
 
 # 色設定
 WHITE = (255, 255, 255)
@@ -181,7 +187,7 @@ result_image = pygame.image.load("result.png")
 result_image = pygame.transform.scale(result_image, (WIDTH, HEIGHT))
 
 # canvas_imageの位置設定（画面中央）
-canvas_rect = canvas_image.get_rect(center=(WIDTH // 2, 3 * HEIGHT // 4))
+canvas_rect = canvas_image.get_rect(center=(WIDTH // 2, 3 * HEIGHT // 5))
 
 target_image = pygame.image.load("target.png")
 target_image = pygame.transform.scale(target_image, (250, 250))
@@ -355,10 +361,9 @@ def draw_final_result_screen():
 
 clock = pygame.time.Clock()
 
-graph = measure
-ratio_thread  =threading.Thread(target=graph.calcurate)
-ratio_thread.start()
-
+# graph = measure
+# ratio_thread  =threading.Thread(target=graph.calcurate)
+# ratio_thread.start()
 while True:
     current_time = pygame.time.get_ticks()
     
@@ -413,7 +418,7 @@ while True:
             if aim_radius > 0 and not game_over:
                 update_aim_position()
                 pygame.draw.circle(screen, BLACK, (int(aim_center_x), int(aim_center_y)), int(aim_radius), 2)
-                print(current_ratio)
+                # print(current_ratio)
 
             # 当たった点の描画
             if hit_pos and game_over:
@@ -429,7 +434,7 @@ while True:
                 score_text_rect = score_text.get_rect(center=(WIDTH // 2, 30))  # 画面の中央上側に位置
                 screen.blit(score_text, score_text_rect)
 
-            min_aim_radius = 20 + 10 * current_ratio
+            min_aim_radius = 20 + 15 * current_ratio
 
             # 照準の縮小（最小サイズの制限付き）
             if aim_radius > min_aim_radius and not game_over:
