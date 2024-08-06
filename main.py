@@ -244,16 +244,16 @@ score_ranges = {
 }
 
 # ゲーム状態
-initial_aim_radius = 600
+initial_aim_radius = 800
 aim_radius = initial_aim_radius
-aim_shrink_rate = 1
+aim_shrink_rate = 1.5
 initial_min = 100
 score = 0
 hit_pos = None
 game_over = False
 animation_running = False
 animation_start_time = 0
-ANIMATION_DURATION = 1000  # 3秒間
+ANIMATION_DURATION = 2500  # 3秒間
 FADE_OUT_DURATION = 500  # フェードアウトの時間（ミリ秒）
 SPEED_IMAGE_DURATION = 100  # 各速度画像の表示時間（ミリ秒）
 
@@ -292,7 +292,7 @@ def get_random_point_in_circle(center, radius):
 def update_aim_position(initial_sway_radius):
     global aim_center_x, aim_center_y, aim_target_x, aim_target_y, current_ratio
     
-    sway_radius = initial_sway_radius + 20*current_ratio
+    sway_radius = initial_sway_radius + 50*current_ratio
     if math.hypot(aim_center_x - aim_target_x, aim_center_y - aim_target_y) < 1:
         aim_target_x, aim_target_y = get_random_point_in_circle(target_rect.center, sway_radius)
     
@@ -440,7 +440,7 @@ while True:
                 score_text_rect = score_text.get_rect(center=(WIDTH // 2, 30))  # 画面の中央上側に位置
                 screen.blit(score_text, score_text_rect)
 
-            min_aim_radius = initial_min + 15 * current_ratio
+            min_aim_radius = initial_min + 40 * current_ratio
 
             # 照準の縮小（最小サイズの制限付き）
             if aim_radius > min_aim_radius and not game_over:
